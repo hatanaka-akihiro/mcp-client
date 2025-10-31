@@ -2,59 +2,41 @@ package com.example.mcp;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
-import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 
 public final class McpClientRunner {
-    private static final String DEFAULT_GITHUB_SERVER = "https://api.github.com/copilot/mcp";
-    private static final String DEFAULT_USER_AGENT = "mcp-java-client/1.0";
-    private static final String DEFAULT_SSE_ENDPOINT = "/server/sse";
+    private static final String DEFAULT_SERVER_BASE = "http://localhost:3001";
+    private static final String DEFAULT_ENDPOINT = "/mcp";
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
 
     private McpClientRunner() {
     }
 
     public static void run() throws Exception {
-        var githubToken = System.getenv("GITHUB_TOKEN");
-        if (githubToken == null || githubToken.isBlank()) {
-            System.err.println("GITHUB_TOKEN environment variable is required to talk to the GitHub MCP server.");
-            return;
-        }
+        var serverBase = System.getenv().getOrDefault("MCP_SERVER_URL", DEFAULT_SERVER_BASE);
+        var endpoint = System.getenv().getOrDefault("MCP_SERVER_ENDPOINT", DEFAULT_ENDPOINT);
+        var toolToCall = System.getenv("MCP_TOOL");
+        var toolArgsJson = System.getenv("MCP_TOOL_ARGS_JSON");
 
-        var baseUrl = System.getenv().getOrDefault("GITHUB_MCP_SERVER_URL", DEFAULT_GITHUB_SERVER);
-        var userAgent = System.getenv().getOrDefault("GITHUB_MCP_USER_AGENT", DEFAULT_USER_AGENT);
-        var toolToCall = System.getenv("GITHUB_MCP_TOOL");
-        var sseEndpoint = System.getenv().getOrDefault("GITHUB_MCP_SSE_ENDPOINT", DEFAULT_SSE_ENDPOINT);
-
-        McpSyncHttpClientRequestCustomizer authCustomizer = (builder, method, uri, body, context) -> builder
-            .header("Authorization", "Bearer " + githubToken)
-            .header("User-Agent", userAgent)
-            .header("X-GitHub-Api-Version", "2023-07-07");
-
-        System.out.printf("Connecting to GitHub MCP at %s (SSE endpoint: %s)\n", baseUrl, sseEndpoint);
-
-        var transport = HttpClientSseClientTransport.builder(baseUrl)
-            .sseEndpoint(sseEndpoint)
-            .customizeClient(clientBuilder -> clientBuilder
-                .connectTimeout(Duration.ofSeconds(20))
-                .followRedirects(HttpClient.Redirect.NORMAL))
-            .httpRequestCustomizer(authCustomizer)
+        var transport = HttpClientStreamableHttpTransport.builder(serverBase)
+            .endpoint(endpoint)
+            .connectTimeout(DEFAULT_TIMEOUT)
             .build();
 
         try (McpSyncClient client = McpClient.sync(transport)
-            .requestTimeout(Duration.ofSeconds(30))
-            .initializationTimeout(Duration.ofSeconds(30))
+            .requestTimeout(DEFAULT_TIMEOUT)
+            .initializationTimeout(DEFAULT_TIMEOUT)
             .build()) {
 
             var initializeResult = client.initialize();
             if (initializeResult != null && initializeResult.serverInfo() != null) {
                 var serverInfo = initializeResult.serverInfo();
-                System.out.printf("Connected to GitHub MCP server: %s %s%n", serverInfo.name(), serverInfo.version());
+                System.out.printf("Connected to MCP server: %s %s%n", serverInfo.name(), serverInfo.version());
             }
 
             var toolsResult = client.listTools();
@@ -68,15 +50,14 @@ public final class McpClientRunner {
             }
 
             if (toolToCall != null && !toolToCall.isBlank()) {
-                var argumentsJson = System.getenv("GITHUB_MCP_TOOL_ARGS_JSON");
                 McpSchema.CallToolRequest request;
                 try {
-                    request = argumentsJson == null || argumentsJson.isBlank()
+                    request = toolArgsJson == null || toolArgsJson.isBlank()
                         ? new McpSchema.CallToolRequest(toolToCall, Collections.emptyMap())
-                        : new McpSchema.CallToolRequest(McpJsonMapper.getDefault(), toolToCall, argumentsJson);
+                        : new McpSchema.CallToolRequest(McpJsonMapper.getDefault(), toolToCall, toolArgsJson);
                 }
                 catch (IllegalArgumentException ex) {
-                    System.err.printf("Invalid JSON for GITHUB_MCP_TOOL_ARGS_JSON: %s%n", ex.getMessage());
+                    System.err.printf("Invalid JSON for MCP_TOOL_ARGS_JSON: %s%n", ex.getMessage());
                     return;
                 }
 
