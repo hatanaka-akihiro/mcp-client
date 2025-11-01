@@ -4,10 +4,8 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
-import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpTransportException;
-import java.io.IOException;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
@@ -42,7 +40,6 @@ public final class GithubMcpClientRunner {
             builder.header("Content-Type", "application/json");
             builder.header("Accept", "application/json, text/event-stream");
             builder.header("User-Agent", userAgent);
-            builder.header("Origin", "https://github.com");
         };
 
         var transport = HttpClientStreamableHttpTransport.builder(serverBase)
@@ -61,7 +58,6 @@ public final class GithubMcpClientRunner {
             System.out.printf("Connecting to GitHub MCP server at %s%s%n", serverBase, endpoint);
 
             var initializeResult = client.initialize();
-            logInitializeResponse(initializeResult);
             if (initializeResult != null && initializeResult.serverInfo() != null) {
                 var serverInfo = initializeResult.serverInfo();
                 System.out.printf("Connected to MCP server: %s %s%n", serverInfo.name(), serverInfo.version());
@@ -82,7 +78,7 @@ public final class GithubMcpClientRunner {
                 try {
                     request = toolArgsJson == null || toolArgsJson.isBlank()
                         ? new McpSchema.CallToolRequest(toolToCall, Collections.emptyMap())
-                        : new McpSchema.CallToolRequest(McpJsonMapper.getDefault(), toolToCall, toolArgsJson);
+                        : new McpSchema.CallToolRequest(io.modelcontextprotocol.json.McpJsonMapper.getDefault(), toolToCall, toolArgsJson);
                 }
                 catch (IllegalArgumentException ex) {
                     System.err.printf("Invalid JSON for MCP_TOOL_ARGS_JSON: %s%n", ex.getMessage());
@@ -108,21 +104,6 @@ public final class GithubMcpClientRunner {
         catch (McpTransportException ex) {
             logTransportError(ex);
             throw ex;
-        }
-    }
-
-    private static void logInitializeResponse(McpSchema.InitializeResult initializeResult) {
-        if (initializeResult == null) {
-            System.out.println("Initialize response: (null)");
-            return;
-        }
-
-        try {
-            var json = McpJsonMapper.getDefault().writeValueAsString(initializeResult);
-            System.out.printf("Initialize response: %s%n", json);
-        }
-        catch (IOException ex) {
-            System.out.printf("Initialize response (toString): %s%n", initializeResult);
         }
     }
 
