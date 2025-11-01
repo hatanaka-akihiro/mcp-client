@@ -73,6 +73,13 @@ public final class GithubMcpClientRunner {
                 tools.forEach(tool -> System.out.println("- " + tool.name() + " : " + tool.description()));
             }
 
+            if (tools != null) {
+                tools.stream()
+                    .filter(tool -> "get_me".equals(tool.name()))
+                    .findFirst()
+                    .ifPresent(tool -> invokeTool(client, "get_me", Collections.emptyMap(), "get_me"));
+            }
+
             if (toolToCall != null && !toolToCall.isBlank()) {
                 McpSchema.CallToolRequest request;
                 try {
@@ -85,25 +92,34 @@ public final class GithubMcpClientRunner {
                     return;
                 }
 
-                var callResult = client.callTool(request);
-                System.out.println("== Call Result ==");
-                if (callResult == null) {
-                    System.out.println("(null response)");
-                }
-                else if (callResult.structuredContent() != null) {
-                    System.out.println(callResult.structuredContent());
-                }
-                else if (callResult.content() != null && !callResult.content().isEmpty()) {
-                    callResult.content().forEach(item -> System.out.println(item.toString()));
-                }
-                else {
-                    System.out.println("(empty response)");
-                }
+                invokeTool(client, request, toolToCall);
             }
     }
         catch (McpTransportException ex) {
             logTransportError(ex);
             throw ex;
+        }
+    }
+
+    private static void invokeTool(McpSyncClient client, String toolName, java.util.Map<String, Object> args, String label) {
+        var request = new McpSchema.CallToolRequest(toolName, args);
+        invokeTool(client, request, label);
+    }
+
+    private static void invokeTool(McpSyncClient client, McpSchema.CallToolRequest request, String label) {
+        var callResult = client.callTool(request);
+        System.out.printf("== Call Result (%s) ==%n", label);
+        if (callResult == null) {
+            System.out.println("(null response)");
+        }
+        else if (callResult.structuredContent() != null) {
+            System.out.println(callResult.structuredContent());
+        }
+        else if (callResult.content() != null && !callResult.content().isEmpty()) {
+            callResult.content().forEach(item -> System.out.println(item.toString()));
+        }
+        else {
+            System.out.println("(empty response)");
         }
     }
 
